@@ -106,7 +106,7 @@ const devFactMiddle = () => {
 
             const descuentoPer = ((dataFact[0].descuento / (dataFact[0].total_fact + dataFact[0].descuento)) * 100)
 
-            ivaList = await listaIva(detFact, descuentoPer);
+            tipoFact === 1 && (ivaList = await listaIva(detFact, descuentoPer))
             dataFiscal = {
                 CantReg: 1,
                 PtoVta: dataFact[0].pv,
