@@ -3,20 +3,10 @@ import { INewFactura, INewProduct, INewPV } from 'interfaces/Irequests';
 import { IDetFactura, IFactura, IUser } from 'interfaces/Itables';
 import ptosVtaController from '../../api/components/ptosVta';
 import prodController from '../../api/components/products';
-import {
-  AlicuotasIva,
-  Conceptos,
-  FactInscriptoProd,
-  FactInscriptoServ,
-  FactMonotribProd,
-  FactMonotribServ,
-  perIvaAlicuotas,
-} from './AfipClass';
-import moment from 'moment';
 import errorSend from '../error';
 import { roundNumber } from '../../utils/roundNumb';
 
-const factuMiddel = () => {
+const presupuestoMiddel = () => {
   const middleware = async (
     req: Request,
     res: Response,
@@ -28,11 +18,7 @@ const factuMiddel = () => {
       const pvId = body.pv_id;
       const pvData: Array<INewPV> = await ptosVtaController.get(pvId);
       const productsList: IfactCalc = await calcProdLista(body.lista_prod);
-      const fiscalBool = req.body.fiscal;
-      const variosPagos = body.variosPagos;
-      if (parseInt(fiscalBool) === 0) {
-        body.fiscal = false;
-      }
+
       let cliente = {
         cliente_tdoc: 99,
         cliente_ndoc: 0,
@@ -43,35 +29,6 @@ const factuMiddel = () => {
           cliente_tdoc: body.cliente_tdoc || 99,
           cliente_ndoc: body.cliente_ndoc || 0,
         };
-      }
-      let letra = '';
-      if (body.fiscal) {
-        if (pvData[0].cond_iva === 1) {
-          if (body.cond_iva === 1) {
-            body.t_fact = 6;
-            letra = 'B';
-          } else {
-            body.t_fact = 6;
-            letra = 'B';
-          }
-        } else if (pvData[0].cond_iva === 4) {
-          body.t_fact = 6;
-          letra = '6';
-        } else {
-          body.t_fact = 11;
-          letra = 'C';
-        }
-      } else {
-        body.t_fact = 0;
-        letra = 'X';
-      }
-
-      if (
-        body.t_fact === 6 &&
-        productsList.totalFact < 10000 &&
-        body.cliente_tdoc === 99
-      ) {
-        body.cliente_ndoc = 0;
       }
 
       const descuento: number = body.descuentoPerc;
@@ -94,7 +51,7 @@ const factuMiddel = () => {
         fecha: body.fecha,
         pv: pvData[0].pv,
         cbte: 0,
-        letra: letra,
+        letra: 'C',
         t_fact: body.t_fact,
         cuit_origen: pvData[0].cuit,
         iibb_origen: pvData[0].iibb,
@@ -128,48 +85,9 @@ const factuMiddel = () => {
         descuento: descuentoNumber,
       };
 
-      let ivaList: Array<IIvaItem> = [];
-      let dataFiscal:
-        | FactInscriptoProd
-        | FactInscriptoServ
-        | FactMonotribProd
-        | FactMonotribServ
-        | any = {};
-
-      if (body.fiscal) {
-        ivaList = await listaIva(productsList.listaProd, descuentoPer);
-        console.log('ivaList :>> ', ivaList);
-        dataFiscal = {
-          CantReg: 1,
-          PtoVta: pvData[0].pv,
-          CbteTipo: body.t_fact,
-          DocTipo: cliente.cliente_tdoc || 99,
-          DocNro:
-            Number(cliente.cliente_tdoc) === 99 ? 0 : cliente.cliente_ndoc || 0,
-          CbteFch: moment(body.fecha, 'YYYY-MM-DD').format('YYYYMMDD'),
-          ImpTotal: Math.round(productsList.totalFact * 100) / 100,
-          MonCotiz: 1,
-          MonId: 'PES',
-          Concepto: Conceptos.Productos,
-          ImpTotConc: 0,
-          ImpNeto:
-            pvData[0].cond_iva === 1
-              ? Math.round(productsList.totalNeto * 100) / 100
-              : Math.round(productsList.totalFact * 100) / 100,
-          ImpOpEx: 0,
-          ImpIVA:
-            pvData[0].cond_iva === 1
-              ? Math.round(productsList.totalIva * 100) / 100
-              : 0,
-          ImpTrib: 0,
-          Iva: pvData[0].cond_iva === 1 ? ivaList : null,
-        };
-      }
       req.body.newFact = newFact;
-      req.body.dataFiscal = dataFiscal;
       req.body.pvData = pvData[0];
       req.body.productsList = productsList.listaProd;
-      req.body.variosPagos = variosPagos;
       next();
     } catch (error) {
       console.error(error);
@@ -242,76 +160,6 @@ const calcProdLista = (
   });
 };
 
-const listaIva = async (
-  listaProd: Array<IDetFactura>,
-  descuento: number,
-): Promise<Array<IIvaItem>> => {
-  listaProd.sort((a, b) => {
-    return a.alicuota_id - b.alicuota_id;
-  });
-  let ivaAnt = 0;
-  let listaIva: Array<IIvaItem> = [];
-  if (listaProd.length > 0) {
-    return new Promise((resolve, reject) => {
-      listaProd.map((item, key) => {
-        let ivaAux = perIvaAlicuotas.find(
-          (e) => e.per === item.alicuota_id,
-        ) || { per: 0, id: 3 };
-        const iva = ivaAux.id;
-        if (iva !== ivaAnt) {
-          if (descuento > 0) {
-            listaIva.push({
-              Id: iva,
-              BaseImp: item.total_neto - item.total_neto * (descuento / 100),
-              Importe: item.total_iva - item.total_iva * (descuento / 100),
-            });
-          } else {
-            listaIva.push({
-              Id: iva,
-              BaseImp: item.total_neto,
-              Importe: item.total_iva,
-            });
-          }
-        } else {
-          const index = listaIva.length - 1;
-          if (descuento > 0) {
-            listaIva[index] = {
-              Id: iva,
-              BaseImp:
-                listaIva[index].BaseImp +
-                (item.total_neto - item.total_neto * (descuento / 100)),
-              Importe:
-                listaIva[index].Importe +
-                (item.total_iva - item.total_iva * (descuento / 100)),
-            };
-          } else {
-            listaIva[index] = {
-              Id: iva,
-              BaseImp: listaIva[index].BaseImp + item.total_neto,
-              Importe: listaIva[index].Importe + item.total_iva,
-            };
-          }
-        }
-        ivaAnt = 5;
-        if (key === listaProd.length - 1) {
-          const newList: Array<IIvaItem> = [];
-          listaIva.map((item, key2) => {
-            newList.push({
-              Id: item.Id,
-              BaseImp: Math.round(item.BaseImp * 100) / 100,
-              Importe: Math.round(item.Importe * 100) / 100,
-            });
-            if (key2 === listaIva.length - 1) {
-              resolve(newList);
-            }
-          });
-        }
-      });
-    });
-  } else {
-    return listaIva;
-  }
-};
 interface IfactCalc {
   listaProd: Array<IDetFactura>;
   totalFact: number;
@@ -319,9 +167,4 @@ interface IfactCalc {
   totalNeto: number;
   totalCosto: number;
 }
-interface IIvaItem {
-  Id: AlicuotasIva;
-  BaseImp: number;
-  Importe: number;
-}
-export = factuMiddel;
+export = presupuestoMiddel;

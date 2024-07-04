@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   tu-descartable-app-prod:
-    image: node-point-sell-prod:1.0
+    image: node-point-sell-prod2:1.0
     working_dir: /app
     volumes:
       - /etc/letsencrypt/live/nekoadmin.com.ar-0002/fullchain.pem:/etc/letsencrypt/live/nekoadmin.com.ar-0002/fullchain.pem:ro
