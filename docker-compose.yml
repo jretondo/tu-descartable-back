@@ -11,6 +11,7 @@ services:
       - ./views:/app/views
       - ./src:/app/src
       - ./tsconfig.json:/app/tsconfig.json
+      - ./:/app
     ports:
       - '3004:3004'
     env_file:
